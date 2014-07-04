@@ -1,209 +1,82 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <memory.h>
-#include <time.h>
-#include <ctype.h>
-
-#include "Interpreter.h"
-#include "Error.h"
 #include "XGui.h"
+#include "XButton.h"
+#include "Interpreter.h"
 
-#include <gtk/gtk.h>
-
-#ifndef nil
-#define nil "\0"
-#endif
-
-#define EQ      40
-#define NE      41
-#define LT      42
-#define LE      43
-#define GT      44
-#define GE      45
-
-extern _DEF DEF;
-extern _PROG PROG;
-extern char mainType;
-
-XWidget *lastXWidget;
-
-char version[4]="0.2";
-char fName[20]="test.cod";
-
-short totalOfFunctions=0;
-
-int fSize;
-bool memOk=false;
-FILE *fp;
-
-Erro ERRO;
-
-clock_t start, stop;
-
-void printAll();
-void loadThisFile(const char *str);
-void loadVarTable();
-void loadFunctionTable();
-void closeAll();
-
-void closeAll()
+XWidget *XButtonNew(XWidget *parent)
 {
-    stop=clock();
-    clock_t elapsed;
-    elapsed = 1000 * (stop - start) / (CLOCKS_PER_SEC);
-    printf("Demorou %ld ms a interpretar\n",elapsed);
-    if(memOk)
-    {
-//        delete [] VAR;
-//        delete [] PROG.stackCharVal;
-//        delete [] PROG.stackIntVal;
-    }
-    closeLog();
+    XWidget *btn;
+    btn=(XWidget*)malloc(sizeof(XWidget));
+    if(btn==NULL)
+	{
+		puts("ERRO ao criar widget");
+		exit(-2);
+	}
+	btn=AddWidget(btn);
+    btn->window=gtk_button_new();
+	gtk_widget_set_size_request(btn->window,50,30);
+	gtk_fixed_put(GTK_FIXED(parent->container),btn->window,10,10);
+	btn->type=BUTTON;
+	btn->parent=parent;
+    btn->size.x=10;
+    btn->size.y=10;
+    btn->size.width=50;
+    btn->size.height=30;
+    return (XWidget*)btn;
 }
 
-void loadThisFile(const char *str)
+gboolean XButtonClick( GtkWidget *wid, gpointer data)
 {
-    if((fp=fopen(str,"rb"))==NULL)
-    {
-        puts("ERRO: Ficheiro não existe");
-        exit(-1);
-    }
-    fseek(fp,0,SEEK_END);
-    fSize=ftell(fp);
-    fseek(fp,0,SEEK_SET);
-    if(fgetc(fp)!='R' || fgetc(fp)!='U' || fgetc(fp)!='N')
-        showErr(ERRO.UNKNOW_FILE);
-    if(fgetc(fp)>version[0] || fgetc(fp)!=version[1] || fgetc(fp)>version[2])
-        showErr(ERRO.CODEC_SUPERIOR);
-    fread(&DEF,1,sizeof(DEF),fp);
-    if(fgetc(fp)!='\n')
-        showErr(ERRO.BROKEN_FILE);
+	if(((XWidget*)data)->event.Click.pChar>-1)
+		MovePointer(((XWidget*)data)->event.Click);
 }
 
-void loadVarTable()
+gboolean XButtonPress( GtkWidget *wid, GdkEventButton *event, gpointer data)
 {
-    int i,l;
-    int indexV;
-
-//    printf("total vars: %d\n",DEF.totalOfVars);
-    PROG.stackCharPos=0;
-    PROG.stackIntPos=0;
-    PROG.stackIntVal=new int[DEF.totalStackInt];
-    PROG.stackCharVal=new char[DEF.totalStackChar];
-    fread((int*)PROG.stackIntVal,sizeof(int),DEF.totalStackInt,fp);
-    if(fgetc(fp)!='\n')
-        showErr(ERRO.BROKEN_FILE);
-    fread((char*)PROG.stackCharVal,sizeof(char),DEF.totalStackChar,fp);
-    if(fgetc(fp)!='\n')
-        showErr(ERRO.BROKEN_FILE);
-    VAR=new VARIABLE[DEF.totalOfVars];
-
-    memOk=true;
-    for(i=0; i<DEF.totalOfVars; i++)
-    {
-        indexV=PROG.stackIntVal[PROG.stackIntPos++];
-        VAR[indexV].type=PROG.stackIntVal[PROG.stackIntPos++];
-        VAR[indexV].length=PROG.stackIntVal[PROG.stackIntPos++];
-        if(VAR[indexV].length>0)
-        {
-            for(l=0; l<VAR[indexV].length; l++)
-                VAR[indexV].data.String[l]=PROG.stackCharVal[PROG.stackCharPos++];
-            VAR[indexV].data.String[++l]='\0';
-            if(VAR[indexV].type==2)
-                VAR[indexV].data.Number=atoi(VAR[indexV].data.String);
-        }
-        else
-            VAR[indexV].data.String[0]='\0';
-//        puts(VAR[indexV].data.String);
-    }
-    free(PROG.stackCharVal);
-    free(PROG.stackIntVal);
-    return;
+	if(((XWidget*)data)->event.Press.pChar>-1)
+		MovePointer(((XWidget*)data)->event.Press);
 }
 
-void loadFunctionTable()
+gboolean XButtonRelease( GtkWidget *wid, GdkEventButton *event, gpointer data)
 {
-    int j;
-
-    fread(&totalOfFunctions,sizeof(short),1,fp);
-    FUNC=new FUNCTION[totalOfFunctions];
-    for(j=0; j<totalOfFunctions; j++)
-    {
-        fread(&FUNC[j].index,sizeof(short),1,fp);
-        fread(&FUNC[j].pInt,sizeof(short),1,fp);
-        FUNC[j].sInt=new int[FUNC[j].pInt];
-        memset((char*)FUNC[j].sInt,0,FUNC[j].pInt);
-        fread(&FUNC[j].sCharLen,sizeof(short),1,fp);
-        FUNC[j].sChar=new char[FUNC[j].sCharLen+1];
-        memset((char*)FUNC[j].sChar,0,FUNC[j].sCharLen+1);
-        fread(&FUNC[j].ret,sizeof(short),1,fp);
-        fread(&FUNC[j].n_param,sizeof(short),1,fp);
-        fread(FUNC[j].param,sizeof(char),10,fp);
-        fread(FUNC[j].sInt,sizeof(int),FUNC[j].pInt,fp);
-        fread(FUNC[j].sChar,sizeof(char),FUNC[j].sCharLen-1,fp);
-        if(fgetc(fp)!='\n')
-            showErr(ERRO.BROKEN_FILE);
-    }
-    return;
+	if(((XWidget*)data)->event.Release.pChar>-1)
+		MovePointer(((XWidget*)data)->event.Release);
 }
 
-void loadMainCode()
+gboolean XButtonEnter( GtkWidget *wid, GdkEventButton *event, gpointer data)
 {
-    short sCharLen,sIntLen;
-    mainType=fgetc(fp);
-    fread(&PROG.lastChar,sizeof(short),1,fp);
-    //printf("lastchar: %d\n",PROG.lastChar);
-    fread(&PROG.lastInt,sizeof(short),1,fp);
-    //printf("lastint: %d\n",PROG.lastInt);
-    if(mainType=='G')
-        //XBegin();
-        gtk_init(NULL,NULL);
-    //printf("main: %c\n",mainType);
-    fread(&sCharLen,sizeof(short),1,fp);
-//    printf("charLen: %d\n",sCharLen);
-    fread(&sIntLen,sizeof(short),1,fp);
-//    printf("intLen: %d\n",sIntLen);
-    if(fgetc(fp)!='I')
-        showErr(ERRO.BROKEN_FILE);
-    PROG.stackCharVal=new char[sCharLen+1];
-    PROG.stackIntVal=new int[sIntLen];
-    PROG.stackCharPos=0;
-    PROG.stackIntPos=0;
-    memset((char*)PROG.stackCharVal,0,sCharLen+1);
-    memset((int*)PROG.stackIntVal,0,sIntLen);
-    fread(PROG.stackIntVal,sizeof(int),sIntLen,fp);
-    if(fgetc(fp)!='C')
-        showErr(ERRO.BROKEN_FILE);
-    fread(PROG.stackCharVal,sizeof(char),sCharLen,fp);
-    if(fgetc(fp)!='\n')
-        showErr(ERRO.BROKEN_FILE);
-    return;
+	if(((XWidget*)data)->event.Enter.pChar>-1)
+		MovePointer(((XWidget*)data)->event.Enter);
 }
 
-int main()
+gboolean XButtonLeave( GtkWidget *wid, GdkEventButton *event, gpointer data)
 {
-    int tok=0;
-    char ch;
+	if(((XWidget*)data)->event.Leave.pChar>-1)
+		MovePointer(((XWidget*)data)->event.Leave);
+}
 
-    atexit(closeAll);
-    loadThisFile(fName);
-    start=clock();
-    loadVarTable();
-    ch=fgetc(fp);
-    if(ch=='$')
+gboolean XButtonDown(GtkWidget *wid, GdkEventButton *event, gpointer data)
+{
+	if(((XWidget*)data)->event.Down.pChar>-1)
+		MovePointer(((XWidget*)data)->event.Down);
+}
+
+gboolean XButtonUp( GtkWidget *wid, GdkEventButton *event, gpointer data)
+{
+	if(((XWidget*)data)->event.Up.pChar>-1)
+		MovePointer(((XWidget*)data)->event.Up);
+}
+
+void XButtonEvent(XWidget *w, char event)
+{
+    switch(event)
     {
-        loadFunctionTable();
-        ch=fgetc(fp);
+    case CLICK:g_signal_connect(w->window,"clicked",G_CALLBACK(XButtonClick),w);break;
+    case DOWN:g_signal_connect(w->window,"button-press-event",G_CALLBACK(XButtonDown),w);break;
+    case UP:g_signal_connect(w->window,"button-release-event",G_CALLBACK(XButtonUp),w);break;
+    case ENTER:g_signal_connect(w->window,"enter-notify-event",G_CALLBACK(XButtonEnter),w);break;
+    case LEAVE:g_signal_connect(w->window,"leave-notify-event",G_CALLBACK(XButtonLeave),w);break;
+    case PRESS:g_signal_connect(w->window,"key-press-event",G_CALLBACK(XButtonPress),w);break;
+    case RELEASE:g_signal_connect(w->window,"key-release-event",G_CALLBACK(XButtonRelease),w);break;
+    default:puts("Evento desconhecido");break;
     }
-    if(ch!='#')
-        showErr(ERRO.BROKEN_FILE);
-    loadMainCode();
-    PROG.stackCharPos=PROG.lastChar;
-    PROG.stackIntPos=PROG.lastInt;
-    printf("RUN - Version %s\n\n", version);
-    while(tok!=-1)
-        tok=evaluate();
-    puts("\nFim do programa");
-    return 0;
 }
